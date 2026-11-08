@@ -1,0 +1,99 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  width: 340px;
+  font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  background: #0f1b2d;
+  color: #e8eef7;
+  padding: 14px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.logo { width: 40px; height: 40px; border-radius: 9px; }
+.titles .name { font-size: 16px; font-weight: 700; }
+.titles .sub { font-size: 11px; color: #7fa0c8; margin-top: 2px; }
+
+.ipbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #16263f;
+  border: 1px solid #24405f;
+  border-radius: 9px;
+  padding: 9px 11px;
+  margin-bottom: 12px;
+  gap: 8px;
+}
+.iplabel { font-size: 10px; color: #7fa0c8; }
+.ipval { font-size: 13px; font-weight: 600; color: #4fd1ff; word-break: break-all; }
+
+.field { margin-bottom: 10px; }
+.field > label {
+  display: block;
+  font-size: 12px;
+  color: #9db8d8;
+  margin-bottom: 4px;
+}
+select, input {
+  width: 100%;
+  background: #16263f;
+  color: #e8eef7;
+  border: 1px solid #2c4a6e;
+  border-radius: 7px;
+  padding: 8px 9px;
+  font-size: 13px;
+  outline: none;
+}
+select:focus, input:focus { border-color: #00c6ff; }
+select option { background: #16263f; }
+
+.geo-row { display: flex; gap: 8px; }
+.geo-row input { width: 50%; }
+
+.btn {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+}
+.btn-auto {
+  width: auto;
+  margin-top: 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  background: #1d3a5f;
+  color: #bfe4ff;
+  border: 1px solid #2f6090;
+}
+.btn-auto:hover { background: #244a78; }
+.btn-save {
+  background: linear-gradient(135deg, #1a5fb4, #00c6ff);
+  color: #fff;
+}
+.btn-save:hover { filter: brightness(1.1); }
+.btn-test {
+  background: #16263f;
+  color: #4fd1ff;
+  border: 1px solid #2f6090;
+}
+.btn-test:hover { background: #1b3050; }
+.btn:disabled { opacity: .6; cursor: wait; }
+
+.status {
+  margin-top: 9px;
+  font-size: 11px;
+  color: #6fd08f;
+  min-height: 15px;
+  text-align: center;
+}
+.status.err { color: #ff8a8a; }

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon48.png" alt="" class="logo">
+    <div class="titles">
+      <div class="name">WebRTC Disabler</div>
+      <div class="sub">隐私防护 · 指纹伪装</div>
+    </div>
+  </div>
+
+  <div class="ipbar">
+    <div class="ipinfo">
+      <div class="iplabel">当前出口 IP</div>
+      <div class="ipval" id="ipVal">点击右侧按钮识别</div>
+    </div>
+    <button id="autoBtn" class="btn btn-auto">按 IP 自动匹配</button>
+  </div>
+
+  <div class="field">
+    <label for="webrtcMode">WebRTC 模式（仅国外站生效）</label>
+    <select id="webrtcMode">
+      <option value="spoof">伪装（推荐：显示正常，不泄露IP）</option>
+      <option value="disable">彻底禁用（最严格，部分风控可见异常）</option>
+      <option value="off">关闭（国外站也用原生，会泄露IP，不推荐）</option>
+    </select>
+    <div style="font-size:11px;color:#7a8aa5;line-height:1.5;margin-top:4px;">
+      智能分流下，国内网站和本地内网始终使用真实 WebRTC，视频/语音通话正常。
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="mode">应用范围（国内外分流代理选智能分流）</label>
+    <select id="mode">
+      <option value="split">智能分流（国内站真实，国外站伪装，推荐）</option>
+      <option value="global">全局伪装（所有网站都用下面的配置）</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label for="tz">时区（国外站伪装值）</label>
+    <select id="tz"></select>
+  </div>
+
+  <div class="field">
+    <label for="lang">语言</label>
+    <select id="lang"></select>
+  </div>
+
+  <div class="field geo">
+    <label>地理定位（经纬度）</label>
+    <div class="geo-row">
+      <input type="number" step="any" id="geoLat" placeholder="纬度 lat">
+      <input type="number" step="any" id="geoLng" placeholder="经度 lng">
+    </div>
+  </div>
+
+  <button id="saveBtn" class="btn btn-save">保存设置</button>
+  <button id="testBtn" class="btn btn-test">打开伪装检测页（ipip.la）</button>
+
+  <div class="status" id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
