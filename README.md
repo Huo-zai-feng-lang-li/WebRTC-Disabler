@@ -1,4 +1,4 @@
-WebRTC Disabler v3.9  浏览器隐私防护扩展
+WebRTC Disabler v3.10  浏览器隐私防护扩展
 =========================================
 
 【功能】
@@ -22,12 +22,14 @@ WebRTC Disabler v3.9  浏览器隐私防护扩展
 4. 弹窗“按 IP 自动匹配”：识别出口所在国家，自动填好国外站伪装值
 5. 保存/自动匹配后自动刷新当前页并关闭弹窗，立即生效（内置页不刷新）
 6. 弹窗内置“打开伪装检测页”按钮，直达 https://ipip.la/disguise.html
+7. 自动排除 Cloudflare 人机验证域名（challenges.cloudflare.com 及其备用域），
+   不向其验证 iframe 注入脚本，避免干扰网站的安全验证（v3.10 起）
 
 【安装方法】
 1. 打开 chrome://extensions/（豆包浏览器同样地址）
 2. 右上角打开“开发者模式”
 3. 点“加载未打包的扩展程序”，选择本文件夹（WebRTC-Disabler）
-4. 看到 WebRTC Disabler 3.9 且无红色“错误”即成功
+4. 看到 WebRTC Disabler 3.10 且无红色“错误”即成功
 5. 点工具栏扩展图标打开设置面板
 
 【日常使用（分流代理用户）】
@@ -42,7 +44,7 @@ WebRTC Disabler v3.9  浏览器隐私防护扩展
   CN_DOMAINS 名单（不影响 WebRTC 防护，仅时区/语言暂按国外处理）
 
 【文件清单】
-  manifest.json   扩展清单 v3.9
+  manifest.json   扩展清单 v3.10
   spoof.js        注入页面主世界的伪装脚本（含国内外域名判定）
   boot.js         读取设置、按域名决定真实/伪装，postMessage 下发
   background.js   后台按域名同步 Accept-Language 请求头

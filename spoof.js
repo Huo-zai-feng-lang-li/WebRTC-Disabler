@@ -8,6 +8,44 @@
 (function () {
   'use strict';
 
+  // ---- 隐身外壳：统一 Function.prototype.toString 代理 ----
+  // hook 后的函数在用 Function.prototype.toString.call(fn) 严格调用时仍返回原生源码，
+  // 规避 CF Turnstile 等对 [native code] 的一致性校验；不影响正常 fn.toString()。
+  var nativeFTS = (function () {
+    var cur = Function.prototype.toString;
+    return (cur && cur.__nativeFTS) ? cur.__nativeFTS : cur;
+  })();
+  var nativeSourceMap = (typeof WeakMap === 'function') ? new WeakMap() : null;
+
+  function markNative(fn, nativeRef, fallback) {
+    if (!fn || !nativeSourceMap) return fn;
+    var txt;
+    try { txt = nativeRef ? nativeFTS.call(nativeRef) : (fallback || ''); }
+    catch (e) { txt = fallback || ''; }
+    if (txt) nativeSourceMap.set(fn, txt);
+    return fn;
+  }
+
+  function defineHidden(obj, prop, value) {
+    try {
+      Object.defineProperty(obj, prop, { value: value, writable: true, configurable: true, enumerable: false });
+    } catch (e) {
+      try { obj[prop] = value; } catch (e2) {}
+    }
+  }
+
+  if (nativeSourceMap && !Function.prototype.toString.__nativeFTS) {
+    var maskedFTS = function toString() {
+      try {
+        if (this && nativeSourceMap.has(this)) return nativeSourceMap.get(this);
+      } catch (e) {}
+      return nativeFTS.call(this);
+    };
+    defineHidden(maskedFTS, '__nativeFTS', nativeFTS);
+    nativeSourceMap.set(maskedFTS, 'function toString() { [native code] }');
+    defineHidden(Function.prototype, 'toString', maskedFTS);
+  }
+
   // 常见国内可注册域名（不含 .cn，.cn 在 pageIsChina 单独判定）；子域自动命中
   var CN_DOMAINS = [
     'baidu.com', 'baidubce.com', 'bdstatic.com', 'bdimg.com', 'baidupcs.com', 'yunjiasu-cdn.net',
@@ -106,7 +144,7 @@
   }
 
   // ---- 只捕获一次原生对象，避免重复包裹 ----
-  var natives = window.__spoofNatives || (window.__spoofNatives = (function () {
+  var natives = window.__spoofNatives || (function () {
     var NP = Navigator.prototype;
     return {
       RTC: window.RTCPeerConnection || window.webkitRTCPeerConnection || null,
@@ -126,7 +164,8 @@
       langsDesc: nativeDesc(NP, 'languages'),
       geoDesc: nativeDesc(NP, 'geolocation')
     };
-  })());
+  })();
+  if (!window.__spoofNatives) defineHidden(window, '__spoofNatives', natives);
 
   var current = {};
 
@@ -161,6 +200,15 @@
       this.ondatachannel = null;
       this.ontrack = null;
       this.__listeners = {};
+      // 真实 RTCPeerConnection 实例无自有可枚举属性，这里对齐，避免 Object.keys/JSON 暴露
+      var self = this;
+      Object.getOwnPropertyNames(this).forEach(function (k) {
+        try {
+          var d = Object.getOwnPropertyDescriptor(self, k);
+          d.enumerable = false;
+          Object.defineProperty(self, k, d);
+        } catch (e) {}
+      });
     }
 
     function fakeFingerprint() {
@@ -207,6 +255,7 @@
     }
 
     function startGathering(pc) {
+      if (!isPc(pc)) return;
       if (pc.__gathering || pc.signalingState === 'closed') return;
       pc.__gathering = true;
       setState(pc, 'iceGatheringState', 'gathering', 'icegatheringstatechange');
@@ -237,11 +286,19 @@
       return randStr(4) + '-' + randStr(4) + '-' + randStr(12);
     }
 
+    // 校验 this 是否为有效 fake 实例；反爬探测可能解绑方法并以 null/非实例调用，
+    // 此时直接安全返回，避免异步流程读取实例属性抛 TypeError 被挑战脚本当作环境错误上报。
+    function isPc(pc) {
+      return !!pc && typeof pc === 'object' && '__gathering' in pc;
+    }
+
     var P = FakeRTCPeerConnection.prototype;
     P.addEventListener = function (type, fn) {
+      if (!isPc(this)) return;
       (this.__listeners[type] = this.__listeners[type] || []).push(fn);
     };
     P.removeEventListener = function (type, fn) {
+      if (!isPc(this)) return;
       var arr = this.__listeners[type] || [];
       var i = arr.indexOf(fn);
       if (i >= 0) arr.splice(i, 1);
@@ -256,6 +313,7 @@
     };
     P.createOffer = function () {
       var pc = this;
+      if (!isPc(pc)) return Promise.resolve(fakeSdp('offer'));
       return new Promise(function (resolve) {
         setTimeout(function () {
           var sdp = fakeSdp('offer');
@@ -269,6 +327,7 @@
     };
     P.setLocalDescription = function (desc) {
       var pc = this;
+      if (!isPc(pc)) return Promise.resolve();
       return new Promise(function (resolve) {
         pc.localDescription = desc || pc.localDescription;
         if (desc && desc.type === 'offer') pc.signalingState = 'have-local-offer';
@@ -278,11 +337,13 @@
       });
     };
     P.setRemoteDescription = function (desc) {
+      if (!isPc(this)) return Promise.resolve();
       this.remoteDescription = desc;
       return Promise.resolve();
     };
     P.addIceCandidate = function () { return Promise.resolve(); };
     P.close = function () {
+      if (!isPc(this)) return;
       this.signalingState = 'closed';
       this.iceConnectionState = 'closed';
       this.connectionState = 'closed';
@@ -294,22 +355,24 @@
     P.getReceivers = function () { return []; };
     P.getTransceivers = function () { return []; };
     P.setConfiguration = function () {};
-    P.getConfiguration = function () { return this.__config; };
+    P.getConfiguration = function () { return isPc(this) ? this.__config : {}; };
 
     FakeRTCPeerConnection.generateCertificate = function () {
       return Promise.resolve({});
     };
 
-    // ---- 隐身加固：让伪造构造器/方法的 name 与 toString 与原生完全一致 ----
+    // ---- 隐身加固：注册进 nativeSourceMap，同时 fn.toString() 与 Function.prototype.toString.call(fn) 都返回原生源码 ----
     function maskToString(fn, nativeRef, fallback) {
       if (!fn) return fn;
-      var txt;
-      try { txt = nativeRef ? Function.prototype.toString.call(nativeRef) : fallback; }
-      catch (e) { txt = fallback; }
+      markNative(fn, nativeRef, fallback);
       try {
-        Object.defineProperty(fn, 'toString', {
-          value: function () { return txt; }, configurable: true, writable: true
-        });
+        var own = function toString() {
+          try {
+            return (nativeSourceMap && nativeSourceMap.get(fn)) || nativeFTS.call(fn);
+          } catch (e) { return fallback || ''; }
+        };
+        markNative(own, null, 'function toString() { [native code] }');
+        Object.defineProperty(fn, 'toString', { value: own, configurable: true, writable: true });
       } catch (e) {}
       return fn;
     }
@@ -334,7 +397,8 @@
 
   // ================= WebRTC（所有模式、所有域名均生效） =================
   function applyWebRTC(mode) {
-    var Fake = window.__fakeRTC || (window.__fakeRTC = buildFakeRTC());
+    var Fake = window.__fakeRTC || buildFakeRTC();
+    if (!window.__fakeRTC) defineHidden(window, '__fakeRTC', Fake);
     var rtcValue;
     if (mode === 'disable') rtcValue = undefined;
     else if (mode === 'off') rtcValue = natives.RTC;
@@ -356,11 +420,13 @@
     // ---- navigator.language / languages ----
     try {
       Object.defineProperty(Navigator.prototype, 'language', {
-        get: function () { return current.lang; },
+        get: markNative(function () { return current.lang; }, natives.langDesc && natives.langDesc.get,
+          'function get language() { [native code] }'),
         configurable: true
       });
       Object.defineProperty(Navigator.prototype, 'languages', {
-        get: function () { return current.langList.slice(); },
+        get: markNative(function () { return current.langList.slice(); }, natives.langsDesc && natives.langsDesc.get,
+          'function get languages() { [native code] }'),
         configurable: true
       });
     } catch (e) {}
@@ -387,7 +453,10 @@
       return 420;
     }
 
-    Date.prototype.getTimezoneOffset = function () { return targetOffset(this); };
+    Date.prototype.getTimezoneOffset = markNative(
+      function getTimezoneOffset() { return targetOffset(this); },
+      natives.getTZO, 'function getTimezoneOffset() { [native code] }'
+    );
 
     function wrapLocaleCtor(Ctor, withTimeZone) {
       function Wrapped(locales, options) {
@@ -400,6 +469,13 @@
       }
       Wrapped.prototype = Ctor.prototype;
       if (Ctor.supportedLocalesOf) Wrapped.supportedLocalesOf = Ctor.supportedLocalesOf;
+      // 还原构造器 name 与 native 源码，避免 "Wrapped" 与源码泄露指纹
+      try {
+        Object.defineProperty(Wrapped, 'name', { value: Ctor.name, configurable: true });
+      } catch (e) {}
+      markNative(Wrapped, Ctor, 'function ' + Ctor.name + '() { [native code] }');
+      markNative(Wrapped.supportedLocalesOf, Ctor.supportedLocalesOf,
+        'function supportedLocalesOf() { [native code] }');
       return Wrapped;
     }
 
@@ -412,7 +488,7 @@
     if (natives.DisplayNames) Intl.DisplayNames = wrapLocaleCtor(natives.DisplayNames, false);
     if (natives.Segmenter) Intl.Segmenter = wrapLocaleCtor(natives.Segmenter, false);
 
-    Date.prototype.toString = function () {
+    Date.prototype.toString = markNative(function () {
       try {
         var p = new natives.DTF('en-US', {
           timeZone: current.tz,
@@ -429,12 +505,12 @@
         var hh = String(Math.floor(abs / 60)).padStart(2, '0');
         var mm = String(abs % 60).padStart(2, '0');
         return map.weekday + ' ' + map.month + ' ' + map.day + ' ' + map.year +
-          ' ' + map.hour + ':' + map.min + ':' + map.second +
+          ' ' + map.hour + ':' + map.minute + ':' + map.second +
           ' GMT' + sign + hh + mm + ' (' + tzAbbr + ')';
       } catch (e) {
         return natives.dateToString.call(this);
       }
-    };
+    }, natives.dateToString, 'function toString() { [native code] }');
 
     // ---- 地理定位 ----
     try {
@@ -450,28 +526,34 @@
           timestamp: Date.now()
         };
       }
+      var NativeGeoProto = (window.Geolocation && window.Geolocation.prototype) || null;
       var geo = {
-        getCurrentPosition: function (success) {
+        getCurrentPosition: markNative(function (success) {
           if (typeof success === 'function') success(fakePosition());
-        },
-        watchPosition: function (success) {
+        }, NativeGeoProto && NativeGeoProto.getCurrentPosition,
+          'function getCurrentPosition() { [native code] }'),
+        watchPosition: markNative(function (success) {
           if (typeof success === 'function') success(fakePosition());
           return 1;
-        },
-        clearWatch: function () {}
+        }, NativeGeoProto && NativeGeoProto.watchPosition,
+          'function watchPosition() { [native code] }'),
+        clearWatch: markNative(function () {},
+          NativeGeoProto && NativeGeoProto.clearWatch,
+          'function clearWatch() { [native code] }')
       };
       Object.defineProperty(Navigator.prototype, 'geolocation', {
-        get: function () { return geo; },
+        get: markNative(function () { return geo; }, natives.geoDesc && natives.geoDesc.get,
+          'function get geolocation() { [native code] }'),
         configurable: true
       });
 
       if (natives.permissionsQuery) {
-        navigator.permissions.query = function (descriptor) {
+        navigator.permissions.query = markNative(function (descriptor) {
           if (descriptor && descriptor.name === 'geolocation') {
             return Promise.resolve({ state: 'granted', onchange: null });
           }
           return natives.permissionsQuery.call(navigator.permissions, descriptor);
-        };
+        }, natives.permissionsQuery, 'function query() { [native code] }');
       }
     } catch (e) {}
   }
@@ -532,7 +614,7 @@
   var firstLocaleMode = (DEFAULTS.mode === 'global') ? 'spoof' : ((pageIsChina() || isLocalIntranet()) ? 'native' : 'spoof');
   apply(Object.assign({}, DEFAULTS, { localeMode: firstLocaleMode }));
 
-  window.__applySpoofConfig = apply;
+  if (window.__applySpoofConfig !== apply) defineHidden(window, '__applySpoofConfig', apply);
 
   // 通过 postMessage 接收隔离世界 boot.js 下发的配置（不受页面 CSP 限制）
   window.addEventListener('message', function (ev) {

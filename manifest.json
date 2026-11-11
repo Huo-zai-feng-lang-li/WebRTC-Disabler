@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WebRTC Disabler",
-  "version": "3.9",
+  "version": "3.10",
   "description": "WebRTC防护 + 时区/语言/地理定位一键伪装（支持按出口IP自动匹配）",
   "icons": {
     "16": "icons/icon16.png",
@@ -25,6 +25,12 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
+      "exclude_matches": [
+        "https://challenges.cloudflare.com/*",
+        "https://challenges.fed.cloudflare.com/*",
+        "https://challenges.cloudflare-cn.com/*",
+        "https://challenges-staging.cloudflare.com/*"
+      ],
       "js": ["spoof.js"],
       "run_at": "document_start",
       "all_frames": true,
@@ -32,6 +38,12 @@
     },
     {
       "matches": ["<all_urls>"],
+      "exclude_matches": [
+        "https://challenges.cloudflare.com/*",
+        "https://challenges.fed.cloudflare.com/*",
+        "https://challenges.cloudflare-cn.com/*",
+        "https://challenges-staging.cloudflare.com/*"
+      ],
       "js": ["boot.js"],
       "run_at": "document_start",
       "all_frames": true
