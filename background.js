@@ -1,155 +1,211 @@
-// ============================================================================
-// background.js — Service Worker
-//   按模式同步 Accept-Language 请求头：
-//   - split 智能分流：国内域名发中文，其余域名发出口国语言
-//   - global 全局伪装：所有域名发出口国语言
-// ============================================================================
-(function () {
-  'use strict';
+/**
+ * background.js — 配置注册 + DNR 请求头（v3.11）
+ *
+ * 设计要点：
+ * - 页面脚本按文件顺序注册（domains.js → mode-*.js → spoof.js，MAIN world）；
+ *   配置由隔离世界的 boot.js 读 storage 后，经一次性令牌消息交给 spoof，页面无法伪造。
+ * - 域名名单来自 domains.js（importScripts），同一份源码也会注入页面脚本，避免两套判定漂移。
+ * - 设置变化只更新注册（后续导航生效）；popup 保存时会刷新当前标签。
+ */
+'use strict';
 
-  var RESOURCE_TYPES = [
-    'main_frame', 'sub_frame', 'stylesheet', 'script', 'image',
-    'font', 'object', 'xmlhttprequest', 'ping', 'csp_report',
-    'media', 'websocket', 'other'
-  ];
+try { importScripts('domains.js'); } catch (e) { /* 测试环境已预置 */ }
 
-  // 国内域名（与 spoof.js/boot.js 一致），DNR 自动匹配其全部子域
-  var CN_DOMAINS = [
-    'baidu.com', 'baidubce.com', 'bdstatic.com', 'bdimg.com', 'baidupcs.com', 'yunjiasu-cdn.net',
-    'taobao.com', 'tmall.com', 'alicdn.com', 'aliyun.com', 'aliyuncs.com', 'alibaba.com',
-    '1688.com', 'alimama.com', 'alipay.com', 'antgroup.com', 'mmstat.com', 'taobaocdn.com',
-    'qq.com', 'tencent.com', 'gtimg.com', 'gtimg.cn', 'qpic.cn', 'qlogo.cn', 'qcloud.com',
-    'tencentcloud.cn', 'myqcloud.com', 'wechat.com', 'foxmail.com', 'tenpay.com', 'weixinbridge.com',
-    'weibo.com', 'weibocdn.com', 'sina.com', 'sina.com.cn', 'sinaimg.cn',
-    'jd.com', 'jdcdn.com', 'jdcloud.com', '360buyimg.com',
-    '360.cn', '360.com', 'so.com', 'haosou.com',
-    'bilibili.com', 'hdslb.com', 'bilivideo.com', 'biliapi.net',
-    'zhihu.com', 'zhimg.com', 'douban.com',
-    '163.com', 'netease.com', '126.com', '127.net', 'youdao.com', 'ydstatic.com',
-    'csdn.net', 'gitee.com', 'juejin.cn', 'segmentfault.com', 'cnblogs.com',
-    'meituan.com', 'dianping.com', 'ele.me', 'didi.com',
-    'xiaohongshu.com', 'xhscdn.com',
-    'douyin.com', 'toutiao.com', 'ixigua.com', 'bytedance.com', 'feishu.cn', 'kuaishou.com',
-    'wps.cn', 'kingsoft.com', '4399.com', '17173.com',
-    'iqiyi.com', 'qiyi.com', 'youku.com', 'tudou.com', 'mgtv.com', 'cctv.com', 'cctv.cn',
-    'xinhuanet.com', 'people.cn', 'china.com', 'china.com.cn',
-    'ctrip.com', 'qunar.com', 'elong.com', 'mafengwo.cn', 'ly.com',
-    'zhipin.com', 'lagou.com', '51job.com', 'zhaopin.com',
-    'mi.com', 'xiaomi.com', 'miui.com', 'huawei.com', 'hicloud.com', 'vmall.com',
-    'oppo.com', 'vivo.com', 'meizu.com', 'oneplus.com', 'realme.com',
-    'amap.com', 'autonavi.com',
-    'eastmoney.com', '10jqka.com.cn', 'xueqiu.com',
-    'smzdm.com', 'jianshu.com', 'coolapk.com', '2345.com', 'hao123.com', 'uc.cn', 'umeng.com',
-    'unionpay.com', 'cmbchina.com', 'ccb.com', 'abchina.com', 'bankcomm.com', 'psbc.com',
-    '10010.com', '10086.cn', '189.cn',
-    'douyu.com', 'huya.com', 'yy.com', 'vip.com', 'suning.com', 'dangdang.com',
-    'deepseek.com', 'doubao.com', 'kimi.com', 'baichuan-ai.com', 'stepfun.com',
-    'lingyiwanwu.com', 'minimaxi.com', 'bochaai.com', 'volcengine.com', 'volces.com',
-    'jianying.com', 'fanqienovel.com', 'dingtalk.com', 'qiniu.com', 'qiniudn.com',
-    'upaiyun.com', 'upyun.com', 'sogou.com', 'kugou.com', 'ximalaya.com', 'hupu.com',
-    'ithome.com', '36kr.com', 'sspai.com', 'ifanr.com', 'cnbeta.com', 'qidian.com',
-    'jjwxc.net', 'dongchedi.com', '58.com', 'ganji.com', 'anjuke.com', 'lianjia.com',
-    'ke.com', 'yiche.com', 'guahao.com', 'chunyuyisheng.com', 'caiyunapp.com',
-    'xuetangx.com', 'zhihuishu.com', 'chaoxing.com', 'icourse163.org', 'fliggy.com',
-    'pinduoduo.com', 'yangkeduo.com', 'dewu.com', 'meitu.com', 'ifeng.com',
-    'caixin.com', 'yicai.com', 'jiemian.com', 'infzm.com', 'lofter.com',
-    '1905.com', 'xiachufang.com'
-  ];
+var LISTS = (typeof globalThis !== 'undefined' && globalThis.__WDS_LISTS) || { cn: [], foreign: [] };
+var CN = LISTS.cn || [];
+var FOREIGN = LISTS.foreign || [];
+try { delete globalThis.__WDS_LISTS; } catch (e) { /* 忽略 */ }
 
-  var DOMESTIC_HEADER = 'zh-CN,zh;q=0.9';
+var ZH = 'zh-CN,zh;q=0.9';
+var EN = 'en-US,en;q=0.9';
+var DEFAULTS = {
+  mode: 'split', webrtcMode: 'spoof', tz: 'America/Los_Angeles',
+  lang: 'en-US', langList: ['en-US', 'en'], geoLat: 34.0522, geoLng: -118.2437
+};
+var CF_EXCLUDES = [
+  'https://challenges.cloudflare.com/*',
+  'https://challenges.fed.cloudflare.com/*',
+  'https://challenges.cloudflare-cn.com/*',
+  'https://challenges-staging.cloudflare.com/*'
+];
+var LOCAL_FILTERS = [
+  '||10.', '||127.', '||0.', '||169.254.', '||192.168.', '||localhost', '*.local',
+  '||172.16.', '||172.17.', '||172.18.', '||172.19.', '||172.20.', '||172.21.',
+  '||172.22.', '||172.23.', '||172.24.', '||172.25.', '||172.26.', '||172.27.',
+  '||172.28.', '||172.29.', '||172.30.', '||172.31.'
+];
+var SCRIPT_ID = 'spoof-main';
+var BOOT_ID = 'spoof-boot';
+var ALL_RULE_IDS = [1, 2, 3, 4, 5, 6].concat(
+  Array.from({ length: 31 }, function (_, i) { return 10 + i; })   // 10..40
+);
+var syncTimer = null;
+/** 读取存储配置并补齐默认值；页面侧还会再做一次归一化。 */
+async function loadConfig() {
+  var stored = await chrome.storage.local.get(null);
+  return Object.assign({}, DEFAULTS, stored && typeof stored === 'object' ? stored : {});
+}
 
-  // 本地内网 urlFilter（DNR 无法按 IP 段匹配，逐段列出；裸主机名由 JS 层处理）
-  var LOCAL_URL_FILTERS = [
-    '||10.', '||127.', '||0.', '||169.254.', '||192.168.', '||localhost', '*.local'
-  ];
-  for (var b = 16; b <= 31; b++) LOCAL_URL_FILTERS.push('||172.' + b + '.');
-  var LOCAL_ID_START = 10;
-
-  var LANG_HEADER_MAP = {
-    'en-US': 'en-US,en;q=0.9',
-    'en-GB': 'en-GB,en;q=0.9',
-    'en-CA': 'en-CA,en;q=0.9',
-    'en-AU': 'en-AU,en;q=0.9',
-    'en-SG': 'en-SG,en;q=0.9',
-    'ja-JP': 'ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7',
-    'ko-KR': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-    'zh-CN': 'zh-CN,zh;q=0.9,en;q=0.8',
-    'zh-TW': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-    'zh-HK': 'zh-HK,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-    'de-DE': 'de-DE,de;q=0.9,en;q=0.8',
-    'fr-FR': 'fr-FR,fr;q=0.9,en;q=0.8',
-    'es-ES': 'es-ES,es;q=0.9,en;q=0.8',
-    'es-MX': 'es-MX,es;q=0.9,en;q=0.8',
-    'ru-RU': 'ru-RU,ru;q=0.9,en;q=0.8',
-    'pt-BR': 'pt-BR,pt;q=0.9,en;q=0.8',
-    'it-IT': 'it-IT,it;q=0.9,en;q=0.8',
-    'nl-NL': 'nl-NL,nl;q=0.9,en;q=0.8',
-    'th-TH': 'th-TH,th;q=0.9,en;q=0.8',
-    'vi-VN': 'vi-VN,vi;q=0.9,en;q=0.8',
-    'id-ID': 'id-ID,id;q=0.9,en;q=0.8',
-    'ms-MY': 'ms-MY,ms;q=0.9,en;q=0.8',
-    'tr-TR': 'tr-TR,tr;q=0.9,en;q=0.9',
-    'ar-SA': 'ar-SA,ar;q=0.9,en;q=0.8',
-    'ar-AE': 'ar-AE,ar;q=0.9,en;q=0.8'
+function makeRule(id, priority, condition, value) {
+  return {
+    id: id,
+    priority: priority,
+    action: {
+      type: 'modifyHeaders',
+      requestHeaders: [{ header: 'Accept-Language', operation: 'set', value: value }]
+    },
+    condition: condition
   };
+}
 
-  async function syncHeader() {
-    var stored = await chrome.storage.local.get(['lang', 'mode']);
-    var lang = stored.lang || 'en-US';
-    var mode = stored.mode || 'split';
-    var foreignHeader = LANG_HEADER_MAP[lang] ||
-      (lang + ',' + lang.split('-')[0] + ';q=0.9,en;q=0.8');
+/**
+ * 生成 DNR 规则。优先级：国际品牌(4) > .cn/本地/裸主机名(3) > 国内名单(2) > 全局国外(1)。
+ * global 模式下所有请求都用配置的出口语言头，与页面侧全量伪装保持一致。
+ */
+function safeHeader(v) {
+  if (typeof v !== 'string') return EN;
+  var s = v.replace(/[\r\n]/g, '').trim();
+  return s || EN;
+}
 
-    var addRules = [];
-    var removeIds = [1, 2];
-    for (var i = 0; i < LOCAL_URL_FILTERS.length; i++) removeIds.push(LOCAL_ID_START + i);
-
-    if (mode === 'split') {
-      // 本地内网（优先级最高）：固定中文头
-      LOCAL_URL_FILTERS.forEach(function (f, idx) {
-        addRules.push({
-          id: LOCAL_ID_START + idx,
-          priority: 3,
-          action: {
-            type: 'modifyHeaders',
-            requestHeaders: [{ header: 'accept-language', operation: 'set', value: DOMESTIC_HEADER }]
-          },
-          condition: { urlFilter: f, resourceTypes: RESOURCE_TYPES }
-        });
-      });
-
-      // 国内域名：固定中文头
-      addRules.push({
-        id: 2,
-        priority: 2,
-        action: {
-          type: 'modifyHeaders',
-          requestHeaders: [{ header: 'accept-language', operation: 'set', value: DOMESTIC_HEADER }]
-        },
-        condition: { requestDomains: CN_DOMAINS, resourceTypes: RESOURCE_TYPES }
-      });
-    }
-
-    // 其余（国外）域名：出口国语言头
-    addRules.push({
-      id: 1,
-      priority: 1,
-      action: {
-        type: 'modifyHeaders',
-        requestHeaders: [{ header: 'accept-language', operation: 'set', value: foreignHeader }]
-      },
-      condition: { urlFilter: '*', resourceTypes: RESOURCE_TYPES }
-    });
-
-    await chrome.declarativeNetRequest.updateDynamicRules({
-      removeRuleIds: removeIds,
-      addRules: addRules
-    });
-  }
-
-  chrome.runtime.onInstalled.addListener(syncHeader);
-  chrome.runtime.onStartup.addListener(syncHeader);
-  chrome.storage.onChanged.addListener(function (changes, area) {
-    if (area === 'local' && (changes.lang || changes.mode)) syncHeader();
+function buildRules(mode, foreignHeader) {
+  var F = safeHeader(foreignHeader);
+  var rules = [makeRule(1, 1, { urlFilter: '*' }, F)];
+  if (mode === 'global') return rules;
+  rules.push(makeRule(2, 2, { requestDomains: CN }, ZH));
+  rules.push(makeRule(3, 4, { requestDomains: FOREIGN }, F));
+  rules.push(makeRule(4, 3, { regexFilter: '^https?://[^/]*\\.(cn|xn--fiqs8s)(:\\d+)?/' }, ZH));
+  rules.push(makeRule(5, 3, { regexFilter: '^https?://[^/:.]+(:\\d+)?/' }, ZH));
+  rules.push(makeRule(6, 3, {
+    regexFilter: '^https?://\\[(::1|0:0:0:0:0:0:0:1|fe[89ab][0-9a-f:]*|f[cd][0-9a-f:]*)(%25[^\\]]*)?\\]'
+  }, ZH));
+  LOCAL_FILTERS.forEach(function (f, i) {
+    rules.push(makeRule(10 + i, 3, { urlFilter: f }, ZH));
   });
-})();
+  return rules;
+}
+
+async function syncHeaderRules() {
+  var cfg = await loadConfig();
+  var mode = cfg.mode === 'global' ? 'global' : 'split';
+  await chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: ALL_RULE_IDS,
+    addRules: buildRules(mode, cfg.langHeader)
+  });
+}
+
+/**
+ * 注册页面脚本。两段：
+ * - MAIN：domains.js → mode-*.js → spoof.js（文件顺序即执行顺序，共享 world，不产生全局）
+ * - ISOLATED：boot.js 读 storage 后经一次性令牌把配置交给 spoof
+ * 只接受文件、不接受内联代码（registerContentScripts 的硬约束）。
+ */
+async function upsertScript(props) {
+  try {
+    await chrome.scripting.updateContentScripts([props]);
+  } catch (e) {
+    await chrome.scripting.registerContentScripts([props]);
+  }
+}
+
+async function applyMainScript() {
+  var cfg = await loadConfig();
+  var modeFile = cfg.mode === 'global' ? 'mode-global.js' : 'mode-split.js';
+  var common = {
+    matches: ['<all_urls>'],
+    excludeMatches: CF_EXCLUDES,
+    runAt: 'document_start',
+    allFrames: true,
+    matchOriginAsFallback: true,
+    persistAcrossSessions: true
+  };
+  var mainProps = Object.assign({
+    id: SCRIPT_ID,
+    js: ['domains.js', modeFile, 'spoof.js'],
+    world: 'MAIN'
+  }, common);
+  var bootProps = Object.assign({
+    id: BOOT_ID,
+    js: ['boot.js']
+  }, common);
+  await upsertScript(mainProps);
+  await upsertScript(bootProps);
+}
+
+/**
+ * 串行化同步：onInstalled/onStartup/storage 变化可能在同一 tick 触发多次，
+ * 并发调用 updateDynamicRules 会互相覆盖并报 "id 不唯一"。
+ */
+var syncing = null;
+var syncQueued = false;
+
+async function runSync() {
+  try {
+    await applyMainScript();
+  } catch (e) {
+    console.error('[WebRTC Disabler] 注册页面脚本失败', e);
+  }
+  try {
+    await syncHeaderRules();
+  } catch (e) {
+    console.error('[WebRTC Disabler] 更新请求头规则失败', e);
+  }
+}
+
+function startSync() {
+  syncing = runSync().then(function () {
+    syncing = null;
+    if (syncQueued) {
+      syncQueued = false;
+      syncAll();
+    }
+  }).catch(function (e) {
+    syncing = null;
+    console.error('[WebRTC Disabler] 同步失败', e);
+  });
+}
+
+function syncAll() {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(function () {
+    if (syncing) { syncQueued = true; return; }
+    startSync();
+  }, 0);
+}
+
+/** 与 spoof.js 同口径的国内/本地判定（仅用于决定是否建立配置通道）。 */
+function isDomesticHost(host) {
+  var h = String(host || '').toLowerCase();
+  if (!h) return false;                        // 空 host：交给 spoof 按帧来源 fail-closed 处理
+  // 国际品牌站（FOREIGN）优先于国内名单：与 spoof.js 的 pageIsChina 顺序一致，
+  // 否则 alibaba.com 这类同时命中两份名单的域名会出现"请求头伪装、JS 不伪装"的矛盾指纹。
+  if (FOREIGN.some(function (d) { return h === d || h.slice(-(d.length + 1)) === '.' + d; })) return false;
+  if (h === 'localhost' || /\.local$/.test(h)) return true;
+  if (/^\[[0-9a-f:]+\]$/.test(h)) {
+    return /^\[(::1|0:0:0:0:0:0:0:1|fe[89ab][0-9a-f:]*|f[cd][0-9a-f:]*)\]$/.test(h);
+  }
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) {
+    return /^(10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h);
+  }
+  if (h.indexOf('.') === -1) return true;      // 裸主机名
+  if (h === 'cn' || /\.cn$/.test(h) || /\.xn--fiqs8s$/.test(h)) return true;
+  return CN.some(function (d) { return h === d || h.slice(-(d.length + 1)) === '.' + d; });
+}
+
+if (chrome.runtime.onMessage) {
+  chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+    if (!msg || msg.type !== 'wds-gate') return false;
+    loadConfig().then(function (cfg) {
+      var mode = cfg.mode === 'global' ? 'global' : 'split';
+      sendResponse({ spoof: mode === 'global' || !isDomesticHost(msg.host) });
+    }).catch(function () {
+      sendResponse({ spoof: true });            // 读配置失败：按保护优先
+    });
+    return true;
+  });
+}
+chrome.runtime.onInstalled.addListener(function () { syncAll(); });
+chrome.runtime.onStartup.addListener(function () { syncAll(); });
+chrome.storage.onChanged.addListener(function (changes, area) {
+  if (area === 'local') syncAll();
+});

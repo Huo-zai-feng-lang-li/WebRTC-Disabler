@@ -1,5 +1,6 @@
 // ============================================================================
-// popup.js — 设置面板逻辑
+// popup.js — 设置面板逻辑（v3.11）
+//   修复点：预设外时区不再丢失；保存前校验时区/经纬度；未内置语言的国家不静默保存。
 // ============================================================================
 (function () {
   'use strict';
@@ -64,7 +65,11 @@
     DE: 'de-DE', FR: 'fr-FR', ES: 'es-ES', MX: 'es-MX', RU: 'ru-RU',
     BR: 'pt-BR', PT: 'pt-BR', IT: 'it-IT', NL: 'nl-NL', TH: 'th-TH',
     VN: 'vi-VN', ID: 'id-ID', MY: 'ms-MY', TR: 'tr-TR', SA: 'ar-SA',
-    AE: 'ar-SA', PH: 'en-US', IN: 'en-US', IE: 'en-GB', NZ: 'en-AU'
+    AE: 'ar-SA', PH: 'en-US', IN: 'en-US', IE: 'en-GB', NZ: 'en-AU',
+    PL: 'en-US', CZ: 'en-US', SE: 'en-US', NO: 'en-US', DK: 'en-US',
+    FI: 'en-US', IL: 'en-US', GR: 'en-US', HU: 'en-US', RO: 'en-US',
+    UA: 'ru-RU', ZA: 'en-GB', EG: 'ar-SA', NG: 'en-GB', KE: 'en-GB',
+    AR: 'es-ES', CL: 'es-ES', CO: 'es-ES', PE: 'es-ES'
   };
 
   var DEFAULTS = {
@@ -79,17 +84,20 @@
 
   var $ = function (id) { return document.getElementById(id); };
 
-  // 填充下拉
   function fillSelects() {
     var tzSel = $('tz');
-    TIMEZONES.forEach(function (t) {
-      var o = new Option(t[1], t[0]);
-      tzSel.add(o);
-    });
+    TIMEZONES.forEach(function (t) { tzSel.add(new Option(t[1], t[0])); });
     var langSel = $('lang');
-    LANGS.forEach(function (l) {
-      langSel.add(new Option(l[1], l[0]));
-    });
+    LANGS.forEach(function (l) { langSel.add(new Option(l[1], l[0])); });
+  }
+
+  /** 存储里可能出现预设外的时区/语言：先补 option 再赋值，避免 select.value 变成空串。 */
+  function ensureOption(sel, value) {
+    if (!value) return;
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === value) return;
+    }
+    sel.add(new Option(value, value));
   }
 
   function langMeta(langVal) {
@@ -105,8 +113,12 @@
       cfg = cfg || {};
       $('webrtcMode').value = cfg.webrtcMode || DEFAULTS.webrtcMode;
       $('mode').value = cfg.mode || DEFAULTS.mode;
-      $('tz').value = cfg.tz || DEFAULTS.tz;
-      $('lang').value = cfg.lang || DEFAULTS.lang;
+      var tz = cfg.tz || DEFAULTS.tz;
+      ensureOption($('tz'), tz);
+      $('tz').value = tz;
+      var lang = cfg.lang || DEFAULTS.lang;
+      ensureOption($('lang'), lang);
+      $('lang').value = lang;
       $('geoLat').value = cfg.geoLat !== undefined ? cfg.geoLat : DEFAULTS.geoLat;
       $('geoLng').value = cfg.geoLng !== undefined ? cfg.geoLng : DEFAULTS.geoLng;
     });
@@ -118,7 +130,7 @@
     el.className = 'status' + (isErr ? ' err' : '');
   }
 
-  // 保存后自动刷新当前标签（仅 http/https 页面），让设置立即生效
+  /** 保存后立即刷新当前标签（仅 http/https），500ms 后关闭弹窗。 */
   function reloadActiveTab() {
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       var tab = tabs && tabs[0];
@@ -131,31 +143,50 @@
   function persist(cfg, msg) {
     chrome.storage.local.set(cfg, function () {
       setStatus(msg || '已保存，页面已刷新');
-      // 刷新当前页后自动关闭弹窗，避免提示一直挂着
+      reloadActiveTab();
       setTimeout(function () {
-        reloadActiveTab();
         try { window.close(); } catch (e) {}
       }, 500);
     });
   }
 
+  /** 校验并保存；返回是否成功落盘。空时区/非法经纬度一律拒绝，避免静默写入坏配置。 */
   function save(msg) {
     var langVal = $('lang').value;
+    if (!langVal) {
+      setStatus('请选择语言', true);
+      return false;
+    }
+    var tz = $('tz').value;
+    if (!tz) {
+      setStatus('请选择时区', true);
+      return false;
+    }
+    var lat = parseFloat($('geoLat').value);
+    var lng = parseFloat($('geoLng').value);
+    if (!isFinite(lat) || lat < -90 || lat > 90) {
+      setStatus('纬度需在 -90 ~ 90 之间', true);
+      return false;
+    }
+    if (!isFinite(lng) || lng < -180 || lng > 180) {
+      setStatus('经度需在 -180 ~ 180 之间', true);
+      return false;
+    }
     var meta = langMeta(langVal);
-    var cfg = {
+    persist({
       mode: $('mode').value,
       webrtcMode: $('webrtcMode').value,
-      tz: $('tz').value,
+      tz: tz,
       lang: langVal,
       langList: meta.list,
       langHeader: meta.header,
-      geoLat: parseFloat($('geoLat').value),
-      geoLng: parseFloat($('geoLng').value)
-    };
-    persist(cfg, msg || '已保存，页面已刷新');
+      geoLat: lat,
+      geoLng: lng
+    }, msg || '已保存，页面已刷新');
+    return true;
   }
 
-  // 按出口 IP 自动匹配（走当前代理）
+  /** 按出口 IP 自动匹配（走当前代理）；语言未内置时只填字段、不落盘。 */
   async function autoMatch() {
     var btn = $('autoBtn');
     btn.disabled = true;
@@ -167,9 +198,7 @@
         data = await r1.json();
         if (!data || data.success === false) throw new Error('ipwho failed');
         var tz1 = (data.timezone && data.timezone.id) ? data.timezone.id : null;
-        var cc1 = data.country_code;
-        var ip1 = data.ip;
-        applyGeo(ip1, cc1, tz1, data.latitude, data.longitude, data.city);
+        applyGeo(data.ip, data.country_code, tz1, data.latitude, data.longitude, data.city);
         return;
       } catch (e) { err1 = e; }
       // 备用：ip-api（http）
@@ -192,19 +221,21 @@
   function applyGeo(ip, cc, tz, lat, lng, city) {
     $('ipVal').textContent = ip + (city ? ' · ' + city : '') + (cc ? ' · ' + cc : '');
     if (tz) {
-      // 若预设里没有该时区，动态加一个
-      var tzSel = $('tz');
-      var exists = false;
-      for (var i = 0; i < tzSel.options.length; i++) {
-        if (tzSel.options[i].value === tz) { exists = true; break; }
-      }
-      if (!exists) tzSel.add(new Option(tz, tz));
-      tzSel.value = tz;
+      ensureOption($('tz'), tz);
+      $('tz').value = tz;
     }
-    if (cc && COUNTRY_LANG[cc]) $('lang').value = COUNTRY_LANG[cc];
     if (lat !== undefined && lat !== null) $('geoLat').value = lat;
     if (lng !== undefined && lng !== null) $('geoLng').value = lng;
-    save('已按出口 IP ' + ip + ' 匹配，页面已刷新');
+
+    var lang = cc ? COUNTRY_LANG[cc] : null;
+    if (!lang) {
+      // 语言不确定时不能静默保存：否则会出现"荷兰时区 + 美国语言"这类自相矛盾配置
+      setStatus('已匹配时区/坐标，但该国家语言未内置，请手动选择语言后保存', true);
+      return false;
+    }
+    ensureOption($('lang'), lang);
+    $('lang').value = lang;
+    return save('已按出口 IP ' + ip + ' 匹配，页面已刷新');
   }
 
   // 事件绑定

@@ -1,15 +1,20 @@
 {
   "manifest_version": 3,
   "name": "WebRTC Disabler",
-  "version": "3.10",
+  "version": "3.11",
+  "minimum_chrome_version": "119",
   "description": "WebRTC防护 + 时区/语言/地理定位一键伪装（支持按出口IP自动匹配）",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["storage", "declarativeNetRequest"],
+  "permissions": ["storage", "declarativeNetRequest", "scripting"],
   "host_permissions": ["<all_urls>"],
+  "web_accessible_resources": [{
+    "resources": ["domains.js", "spoof.js"],
+    "matches": ["<all_urls>"]
+  }],
   "action": {
     "default_popup": "popup.html",
     "default_title": "WebRTC Disabler 隐私防护",
@@ -21,32 +26,5 @@
   },
   "background": {
     "service_worker": "background.js"
-  },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "exclude_matches": [
-        "https://challenges.cloudflare.com/*",
-        "https://challenges.fed.cloudflare.com/*",
-        "https://challenges.cloudflare-cn.com/*",
-        "https://challenges-staging.cloudflare.com/*"
-      ],
-      "js": ["spoof.js"],
-      "run_at": "document_start",
-      "all_frames": true,
-      "world": "MAIN"
-    },
-    {
-      "matches": ["<all_urls>"],
-      "exclude_matches": [
-        "https://challenges.cloudflare.com/*",
-        "https://challenges.fed.cloudflare.com/*",
-        "https://challenges.cloudflare-cn.com/*",
-        "https://challenges-staging.cloudflare.com/*"
-      ],
-      "js": ["boot.js"],
-      "run_at": "document_start",
-      "all_frames": true
-    }
-  ]
+  }
 }
