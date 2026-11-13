@@ -59,15 +59,15 @@ WebRTC Disabler v3.11  浏览器隐私防护扩展
   boot.js         隔离世界配置桥（storage → 一次性令牌 → spoof）
   background.js   注册两段脚本 + 串行同步 DNR 请求头 + 配置变化重注册
   popup.html/css/js  设置弹窗界面
-  tests/          Node vm 回归（3 套）+ 真实 Chrome E2E（40 项）
+  tests/          Node vm 回归（3 套）+ 真实 Chrome E2E（80 项）
   icons/          摄像头+挂锁 单图标 16/48/128
   README.md       本文件
 
 【验证】
   $env:TZ='Asia/Shanghai'; node tests/spoof_regression.test.js   # 31/31
-  node tests/background.test.js                                  # 6/6
+  node tests/background.test.js                                  # 8/8
   node tests/popup.test.js                                       # 5/5
-  node tests/e2e_chrome.js                                       # 40/40（需本机 Chrome）
+  node tests/e2e_chrome.js                                       # 80/80（需本机 Chrome）
 
 【本扩展管不了的（需其他手段）】
 - IPv6：分流代理下 IPv6 可能绕过代理直连，建议在无线网卡直接禁用 IPv6
