@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WebRTC Disabler",
-  "version": "3.11",
+  "version": "3.12",
   "minimum_chrome_version": "119",
   "description": "WebRTC防护 + 时区/语言/地理定位一键伪装（支持按出口IP自动匹配）",
   "icons": {

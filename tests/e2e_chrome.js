@@ -271,7 +271,7 @@ async function setStorage(cdp, swSession, obj) {
     if (!ours) throw new Error('扩展未加载：找不到 WebRTC Disabler 的 background SW');
     check('扩展已加载（background SW 存在）', true, true);
     const extVersion = await evalIn(cdp, ours.sessionId, 'chrome.runtime.getManifest().version');
-    check('扩展版本=3.11', extVersion, '3.11');
+    check('扩展版本=3.12', extVersion, '3.12');
     swSession = ours.sessionId;
     let ruleCount = 0;
     for (let i = 0; i < 20; i++) {

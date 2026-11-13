@@ -1,5 +1,5 @@
 /**
- * WebRTC Disabler —— MAIN world 注入脚本（v3.11）。
+ * WebRTC Disabler —— MAIN world 注入脚本（v3.12）。
  *
  * 注入方式：background 注册文件序列（domains.js → mode-*.js → spoof.js），三者同处 MAIN world：
  *   - domains.js 写入 window.__WDS_LISTS，spoof 读取后立即删除；

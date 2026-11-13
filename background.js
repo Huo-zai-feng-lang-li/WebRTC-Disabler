@@ -1,5 +1,5 @@
 /**
- * background.js — 配置注册 + DNR 请求头（v3.11）
+ * background.js — 配置注册 + DNR 请求头（v3.12）
  *
  * 设计要点：
  * - 页面脚本按文件顺序注册（domains.js → mode-*.js → spoof.js，MAIN world）；

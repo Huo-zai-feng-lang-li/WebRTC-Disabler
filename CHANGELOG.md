@@ -1,5 +1,20 @@
 # 更新日志
 
+## v3.12 (2026-11-13)
+
+### 修复（严重 · 分流判定不一致）
+- **品牌站只伪装请求头、不伪装 JS**：`alibaba.com`/`aliexpress.com`/`wechat.com`/`xiaomi.com`/`huawei.com`/`oppo.com`/`vivo.com`/`oneplus.com`/`realme.com`/`meizu.com`/`tiktok.com` 共 11 个域名同时出现在 `domains.js` 的 CN 与 FOREIGN 两份名单里。DNR 规则与 `spoof.js` 的 `pageIsChina()` 都按"FOREIGN 优先"处理，但 `background.js` 的 `isDomesticHost()` 只查 CN，导致 `wds-gate` 回 `{spoof:false}`、`boot.js` 不建配置通道，页面侧停留在 DEFAULTS 或真实环境——最终出现"请求头 ja-JP / JS 时区洛杉矶或真实时区"的矛盾指纹，**比完全不伪装更容易被识别**。
+  修复：`isDomesticHost()` 开头增加 FOREIGN 优先判定，与 `spoof.js` 的 `pageIsChina()` 顺序完全一致。
+- 影响面：仅 split（智能分流）模式下、上述 11 个品牌站；纯国内站、普通国外站、本地内网、global 模式均无变化。
+
+### 测试
+- `tests/background.test.js` 6/6 → **8/8**：新增 BG7（FOREIGN∩CN 域名的 gate 裁决与 spoof.js 同口径，覆盖 15 个必须伪装 + 11 个必须原生 + 2 个普通国外）、BG8（global 模式 gate 对所有 host 返回伪装）；测试桩补齐 `chrome.runtime.onMessage`。
+- `tests/e2e_chrome.js` 40/40 → **80/80**：新增 `www.tiktok.com` / `www.xiaomi.com` 两个品牌站的完整伪装面断言（语言/时区/DST/Intl/RTC/SDP/特殊帧/Worker/定位/请求头），通过 `--host-resolver-rules` 映射到本地测试服务。
+- **反证有效**：临时移除 `isDomesticHost()` 的 FOREIGN 判定后，BG7 与 E2E 品牌站用例均失败（7/8、70/80），确认测试不是空转通过。
+
+### 其他
+- README 同步测试数与用例覆盖；全文件版本号 3.11 → 3.12。
+
 ## v3.11 (2026-11-12)
 
 ### 修复（全链路对抗性审计的 5 条严重问题）
@@ -10,16 +25,15 @@
 - **假 RTC 表面差异**：状态存 WeakMap（实例零自有属性）、成员挂原型、构造器 `length=0`、仅 mDNS 候选、事件 `isTrusted=true`、`close` 清理定时器、非法 `this` 抛 `TypeError`。
 
 ### 修复（中度）
-- **品牌站只伪装请求头、不伪装 JS**：`alibaba.com`/`tiktok.com`/`xiaomi.com`/`huawei.com` 等 11 个域名同时出现在 `domains.js` 的 CN 与 FOREIGN 两份名单里。DNR 规则与 `spoof.js` 都按"FOREIGN 优先"处理，但 `background.js` 的 `isDomesticHost()` 只查 CN，导致 `wds-gate` 回 `{spoof:false}`、`boot.js` 不建配置通道，页面侧只能停留在 DEFAULTS 或真实环境——出现"请求头 ja-JP / JS 时区洛杉矶或真实时区"的矛盾指纹，比不伪装更易被识别。修复：`isDomesticHost()` 开头增加 FOREIGN 优先判定，与 `spoof.js` 的 `pageIsChina()` 顺序完全一致。
 - **DNR 与 JS 分流不一致**：`domains.js` 成为唯一名单；DNR 新增 `.cn/.xn--fiqs8s` 正则、裸主机名、私有 IPv6、23 条本地规则，国际品牌站用更高优先级发英文头；`updateDynamicRules` 串行化，消除 `onInstalled`/`onStartup`/storage 并发导致的 "id 不唯一" 竞态。
 - **popup 丢配置**：预设外时区/语言先补 option 再赋值，不再保存成空串；保存前校验时区、纬度 ±90、经度 ±180；IP 自动匹配遇到未内置语言的国家只填字段、不静默落盘。
 - **Worker 环境**：classic Worker 注入同一份 domains+spoof 代码（源码经令牌通道下发，不在页面全局）；`module` Worker、data: URL、异常场景回退原生，不破坏页面。
 
 ### 测试
 - `tests/spoof_regression.test.js` 31/31（A 配置/令牌通道、B 国内零改动、C 域名与帧、D 时区、E 指纹/定位、F RTC、G Worker）
-- `tests/background.test.js` 8/8（双段注册描述符、global 模式文件、DNR 与 JS 判定一致、配置变更重注册、langHeader、**FOREIGN∩CN 域名的 gate 裁决与 spoof.js 同口径**、global 模式全量伪装）
+- `tests/background.test.js` 6/6（双段注册描述符、global 模式文件、DNR 与 JS 判定一致、配置变更重注册、langHeader）
 - `tests/popup.test.js` 5/5（时区持久化、空值/经纬度校验、自动匹配、未内置语言）
-- `tests/e2e_chrome.js` 真实 Chrome 扩展态 **80/80**（CDP `Extensions.loadUnpacked`；含国外/国内/本地分流、DST、about:blank/srcdoc、Worker、RTC/SDP、定位、请求头、**FOREIGN∩CN 品牌站完整伪装面**、global 热切换与还原）
+- `tests/e2e_chrome.js` 真实 Chrome 扩展态 **40/40**（CDP `Extensions.loadUnpacked`；含国外/国内/本地分流、DST、about:blank/srcdoc、Worker、RTC/SDP、定位、请求头、global 热切换与还原）
 - 运行方式：`$env:TZ='Asia/Shanghai'; node tests/spoof_regression.test.js`（三套同理）；E2E 用 `node tests/e2e_chrome.js`
 
 ## v3.10 (2026-11-11)

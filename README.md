@@ -1,4 +1,4 @@
-WebRTC Disabler v3.11  浏览器隐私防护扩展
+WebRTC Disabler v3.12  浏览器隐私防护扩展
 =========================================
 
 【功能】
@@ -28,7 +28,7 @@ WebRTC Disabler v3.11  浏览器隐私防护扩展
 1. 打开 chrome://extensions/（豆包浏览器同样地址）
 2. 右上角打开“开发者模式”
 3. 点“加载未打包的扩展程序”，选择本文件夹（WebRTC-Disabler）
-4. 看到 WebRTC Disabler 3.11 且无红色“错误”即成功（需 Chrome/Chromium 119+）
+4. 看到 WebRTC Disabler 3.12 且无红色“错误”即成功（需 Chrome/Chromium 119+）
 5. 点工具栏扩展图标打开设置面板
 
 【日常使用（分流代理用户）】
@@ -52,7 +52,7 @@ WebRTC Disabler v3.11  浏览器隐私防护扩展
   先按默认值工作；Worker 在源码到达前创建会回退原生
 
 【文件清单】
-  manifest.json   扩展清单 v3.11（无静态 content_scripts，由后台动态注册；声明 WAR）
+  manifest.json   扩展清单 v3.12（无静态 content_scripts，由后台动态注册；声明 WAR）
   domains.js      国内/国际品牌域名名单（唯一来源，同时供页面判定与后台）
   mode-split.js / mode-global.js  注册时选定分流模式（不产生页面可见全局）
   spoof.js        MAIN world 伪装引擎（名单/模式/配置读完即删）
